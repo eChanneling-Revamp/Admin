@@ -1,0 +1,420 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model for authentication with enhanced role management
+model User {
+  id            String    @id @default(cuid())
+  username      String    @unique
+  email         String    @unique
+  password      String    // Hashed password
+  name          String
+  role          String    @default("user") // e.g., "user", "admin", "superadmin", "finance", "reports"
+  privileges    String[]  @default([]) // Array of permission strings
+  phone         String?
+  isActive      Boolean   @default(true)
+  twoFASecret   String?   // For 2FA authentication
+  twoFAEnabled  Boolean   @default(false)
+  lastLoginAt   DateTime?
+  lastLoginIp   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  createdBy     String?
+  
+  // Relations
+  sessions           Session[]
+  passwordResets     PasswordReset[]
+  branches           Branch[]  @relation("UserBranches")
+  auditLogs          AuditLog[]
+  createdHospitals   Hospital[] @relation("HospitalCreatedBy")
+  createdDoctors     Doctor[] @relation("DoctorCreatedBy")
+  
+  @@map("users")
+}
+
+// Session model for managing user sessions
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("sessions")
+}
+
+// Password Reset model for handling password reset requests
+model PasswordReset {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  otp       String   // OTP for verification
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("password_resets")
+}
+
+// Enhanced Branch model with hierarchy
+model Branch {
+  id          String   @id @default(cuid())
+  name        String
+  address     String
+  city        String
+  district    String
+  province    String
+  phone       String
+  email       String?
+  branchCode  String   @unique
+  branchType  String   @default("main") // main, sub-unit
+  parentId    String?
+  isActive    Boolean  @default(true)
+  managerId   String?
+  latitude    Float?
+  longitude   Float?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  manager     User?    @relation("UserBranches", fields: [managerId], references: [id])
+  parent      Branch?  @relation("BranchHierarchy", fields: [parentId], references: [id])
+  subUnits    Branch[] @relation("BranchHierarchy")
+  agents      Agent[]
+  
+  @@map("branches")
+}
+
+// Hospital model
+model Hospital {
+  id              String   @id @default(cuid())
+  name            String
+  nameInSinhala   String?
+  nameInTamil     String?
+  hospitalCode    String   @unique
+  address         String
+  city            String
+  district        String
+  province        String
+  phone           String
+  email           String?
+  website         String?
+  registrationNo  String?  // Health Ministry Registration
+  hospitalType    String   @default("private") // private, government, semi-government
+  hospitalGroup   String?  // e.g., "Asiri Group", "Lanka Hospitals Group"
+  facilities      String[] @default([])
+  isActive        Boolean  @default(true)
+  latitude        Float?
+  longitude       Float?
+  operatingHours  String?
+  emergencyAvailable Boolean @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdBy       String?
+  
+  creator         User?    @relation("HospitalCreatedBy", fields: [createdBy], references: [id])
+  doctors         DoctorHospital[]
+  fees            HospitalFee[]
+  apiIntegrations HospitalAPI[]
+  
+  @@map("hospitals")
+}
+
+// Specialization model
+model Specialization {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  nameInSinhala String?
+  nameInTamil   String?
+  description String?
+  category    String   // e.g., "Surgery", "Medicine", "Diagnostic"
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  doctors     Doctor[]
+  
+  @@map("specializations")
+}
+
+// Doctor model
+model Doctor {
+  id                String   @id @default(cuid())
+  slmcNumber        String   @unique // Sri Lanka Medical Council Registration
+  name              String
+  nameWithTitle     String   // Dr., Prof., etc.
+  nameInSinhala     String?
+  nameInTamil       String?
+  email             String?
+  phone             String
+  specializationId  String
+  qualifications    String[] @default([])
+  biography         String?
+  yearsOfExperience Int?
+  profileImage      String?
+  consultationFee   Float    @default(0)
+  followUpFee       Float    @default(0)
+  isActive          Boolean  @default(true)
+  rating            Float?   @default(0)
+  totalReviews      Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  createdBy         String?
+  
+  specialization  Specialization @relation(fields: [specializationId], references: [id])
+  creator         User?    @relation("DoctorCreatedBy", fields: [createdBy], references: [id])
+  hospitals       DoctorHospital[]
+  schedules       DoctorSchedule[]
+  
+  @@map("doctors")
+}
+
+// Doctor-Hospital relationship (many-to-many with additional data)
+model DoctorHospital {
+  id              String   @id @default(cuid())
+  doctorId        String
+  hospitalId      String
+  consultationFee Float
+  followUpFee     Float
+  isActive        Boolean  @default(true)
+  startDate       DateTime @default(now())
+  endDate         DateTime?
+  createdAt       DateTime @default(now())
+  
+  doctor          Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  hospital        Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  
+  @@unique([doctorId, hospitalId])
+  @@map("doctor_hospitals")
+}
+
+// Doctor Schedule
+model DoctorSchedule {
+  id          String   @id @default(cuid())
+  doctorId    String
+  dayOfWeek   Int      // 0-6 (Sunday-Saturday)
+  startTime   String   // HH:mm format
+  endTime     String
+  maxPatients Int      @default(20)
+  slotDuration Int     @default(15) // minutes
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  
+  doctor      Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  
+  @@map("doctor_schedules")
+}
+
+// Agent model (Corporate, Telco, Individual)
+model Agent {
+  id              String   @id @default(cuid())
+  agentCode       String   @unique
+  agentType       String   // corporate, telco, individual
+  name            String
+  companyName     String?
+  contactPerson   String?
+  email           String
+  phone           String
+  address         String?
+  city            String?
+  district        String?
+  nic             String?  // For individual agents
+  businessRegNo   String?  // For corporate
+  commissionRate  Float    @default(0)
+  creditLimit     Float    @default(0)
+  currentBalance  Float    @default(0)
+  isActive        Boolean  @default(true)
+  branchId        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  branch          Branch?  @relation(fields: [branchId], references: [id])
+  corporateAccounts CorporateAccount[]
+  
+  @@map("agents")
+}
+
+// Corporate Account model
+model CorporateAccount {
+  id              String   @id @default(cuid())
+  accountCode     String   @unique
+  companyName     String
+  contactPerson   String
+  email           String
+  phone           String
+  address         String
+  creditLimit     Float    @default(0)
+  usedCredit      Float    @default(0)
+  billingCycle    String   @default("monthly") // monthly, quarterly
+  paymentTerms    Int      @default(30) // days
+  isActive        Boolean  @default(true)
+  agentId         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  agent           Agent?   @relation(fields: [agentId], references: [id])
+  employees       CorporateEmployee[]
+  
+  @@map("corporate_accounts")
+}
+
+// Corporate Employee model
+model CorporateEmployee {
+  id              String   @id @default(cuid())
+  corporateId     String
+  employeeId      String   // Company's employee ID
+  name            String
+  email           String?
+  phone           String
+  nic             String?
+  department      String?
+  designation     String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  corporate       CorporateAccount @relation(fields: [corporateId], references: [id], onDelete: Cascade)
+  dependents      Dependent[]
+  
+  @@unique([corporateId, employeeId])
+  @@map("corporate_employees")
+}
+
+// Dependent model
+model Dependent {
+  id          String   @id @default(cuid())
+  employeeId  String
+  name        String
+  relationship String  // spouse, child, parent
+  dateOfBirth DateTime?
+  nic         String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  
+  employee    CorporateEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  @@map("dependents")
+}
+
+// Hospital Fee Configuration
+model HospitalFee {
+  id              String   @id @default(cuid())
+  hospitalId      String
+  serviceName     String   // registration, consultation, channelling_fee
+  baseFee         Float
+  platformFee     Float    @default(0)
+  totalFee        Float
+  isActive        Boolean  @default(true)
+  effectiveFrom   DateTime @default(now())
+  effectiveUntil  DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  hospital        Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  
+  @@map("hospital_fees")
+}
+
+// Discount Configuration
+model Discount {
+  id              String   @id @default(cuid())
+  discountCode    String   @unique
+  discountName    String
+  discountType    String   // percentage, fixed
+  discountValue   Float
+  applicableFor   String[] @default([]) // senior_citizen, corporate, early_booking, first_time
+  minAmount       Float?
+  maxDiscount     Float?
+  startDate       DateTime
+  endDate         DateTime?
+  usageLimit      Int?
+  usageCount      Int      @default(0)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@map("discounts")
+}
+
+// Payment Transaction model
+model Payment {
+  id              String   @id @default(cuid())
+  transactionId   String   @unique
+  referenceNo     String?
+  patientName     String
+  patientPhone    String
+  amount          Float
+  currency        String   @default("LKR")
+  paymentMethod   String   // card, cash, bank_transfer, corporate
+  paymentGateway  String?  // sampath, commercial, peoples, ipg
+  status          String   @default("pending") // pending, success, failed, reversed, refunded
+  failureReason   String?
+  reversedAt      DateTime?
+  reversedBy      String?
+  reversalReason  String?
+  reconciled      Boolean  @default(false)
+  reconciledAt    DateTime?
+  reconciledBy    String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@map("payments")
+}
+
+// Audit Log model
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  userName    String?
+  action      String   // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, etc.
+  entity      String   // User, Hospital, Doctor, Payment, etc.
+  entityId    String?
+  changes     Json?    // Store old and new values
+  ipAddress   String?
+  userAgent   String?
+  success     Boolean  @default(true)
+  errorMessage String?
+  createdAt   DateTime @default(now())
+  
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// Third-Party API Integration
+model HospitalAPI {
+  id              String   @id @default(cuid())
+  hospitalId      String
+  apiName         String   // HMS, Laboratory, Pharmacy
+  apiType         String   // rest, soap, webhook
+  baseUrl         String?
+  apiKey          String?
+  apiSecret       String?
+  webhookUrl      String?
+  isEnabled       Boolean  @default(false)
+  lastSyncAt      DateTime?
+  syncFrequency   String?  // realtime, hourly, daily
+  configuration   Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  hospital        Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  
+  @@unique([hospitalId, apiName])
+  @@map("hospital_apis")
+}

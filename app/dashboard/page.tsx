@@ -62,7 +62,7 @@ export default function DashboardPage() {
     return (
       <ProtectedLayout>
         <div className="flex items-center justify-center h-96">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600" />
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-t-2 border-cyan-600" />
         </div>
       </ProtectedLayout>
     )
@@ -73,8 +73,11 @@ export default function DashboardPage() {
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <Button onClick={handleRefresh} variant="outline" size="sm">
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-700 to-teal-600 bg-clip-text text-transparent">Dashboard</h1>
+            <p className="text-sm text-gray-600 mt-1">Welcome to eChannelling Admin Portal</p>
+          </div>
+          <Button onClick={handleRefresh} className="bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700 text-white shadow-md" size="sm">
             <RotateCw className="w-4 h-4 mr-2" />
             Refresh
           </Button>

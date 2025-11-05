@@ -28,7 +28,8 @@ interface VerifyOTPResponse {
 
 export async function login(credentials: LoginCredentials): Promise<LoginResponse> {
   try {
-    const response = await fetch("/api/mock/login", {
+    // Use the new Prisma-based auth API endpoint
+    const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -60,14 +61,19 @@ export async function login(credentials: LoginCredentials): Promise<LoginRespons
 
 export async function requestPasswordReset(identifier: string): Promise<PasswordResetResponse> {
   try {
-    // Mock API call - simulate network delay
-    await new Promise((resolve) => setTimeout(resolve, 1500))
+    const response = await fetch("/api/auth/forgot-password", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ identifier }),
+    })
 
-    // Simulate success for demo purposes
-    // In production, this would call your actual API
+    const data = await response.json()
+
     return {
-      success: true,
-      message: "OTP sent successfully to your registered email/phone",
+      success: data.success || false,
+      message: data.message || "Failed to send OTP. Please try again.",
     }
   } catch (error) {
     return {
@@ -79,33 +85,45 @@ export async function requestPasswordReset(identifier: string): Promise<Password
 
 export async function verifyOTP(identifier: string, otp: string): Promise<VerifyOTPResponse> {
   try {
-    // Mock API call
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    const response = await fetch("/api/auth/verify-otp", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ identifier, otp }),
+    })
 
-    // Mock validation - accept '123456' as valid OTP
-    if (otp === "123456") {
-      return {
-        success: true,
-        resetToken: "mock-reset-token-" + Date.now(),
-        message: "OTP verified successfully",
-      }
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || "Invalid OTP")
     }
 
-    throw new Error("Invalid OTP")
-  } catch (error) {
-    throw new Error("Invalid OTP. Please try again.")
+    return {
+      success: data.success,
+      resetToken: data.resetToken,
+      message: data.message,
+    }
+  } catch (error: any) {
+    throw new Error(error.message || "Invalid OTP. Please try again.")
   }
 }
 
 export async function resetPassword(resetToken: string, newPassword: string): Promise<PasswordResetResponse> {
   try {
-    // Mock API call
-    await new Promise((resolve) => setTimeout(resolve, 1500))
+    const response = await fetch("/api/auth/reset-password", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ resetToken, newPassword }),
+    })
 
-    // Simulate success
+    const data = await response.json()
+
     return {
-      success: true,
-      message: "Password reset successfully",
+      success: data.success || false,
+      message: data.message || "Failed to reset password. Please try again.",
     }
   } catch (error) {
     return {
