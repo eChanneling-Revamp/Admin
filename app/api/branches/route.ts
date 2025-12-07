@@ -1,90 +1,87 @@
 import { NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
 import type { Branch, CreateBranchDto } from "@/types/branch"
 
-// Mock data
-const branches: Branch[] = [
-  {
-    id: "1",
-    branchName: "Colombo Main Branch",
-    branchCode: "CMB001",
-    referenceType: "Hospital",
-    referenceId: "H001",
-    referenceName: "Colombo General Hospital",
-    address: "Regent Street, Colombo 08",
-    city: "Colombo",
-    district: "Colombo",
-    contactNumber: "+94112691111",
-    email: "colombo@echannelling.com",
-    status: "Active",
-    createdAt: "2024-01-15T10:00:00Z",
-    updatedAt: "2024-01-15T10:00:00Z",
-  },
-  {
-    id: "2",
-    branchName: "Kandy Branch",
-    branchCode: "KDY001",
-    referenceType: "Hospital",
-    referenceId: "H002",
-    referenceName: "Kandy Teaching Hospital",
-    address: "William Gopallawa Mawatha, Kandy",
-    city: "Kandy",
-    district: "Kandy",
-    contactNumber: "+94812234567",
-    email: "kandy@echannelling.com",
-    status: "Active",
-    createdAt: "2024-01-20T10:00:00Z",
-    updatedAt: "2024-01-20T10:00:00Z",
-  },
-  {
-    id: "3",
-    branchName: "Galle Agent Office",
-    branchCode: "GAL001",
-    referenceType: "Agent",
-    referenceId: "A001",
-    referenceName: "Southern Medical Services",
-    address: "Main Street, Galle Fort",
-    city: "Galle",
-    district: "Galle",
-    contactNumber: "+94912234567",
-    email: "galle@echannelling.com",
-    status: "Active",
-    createdAt: "2024-02-01T10:00:00Z",
-    updatedAt: "2024-02-01T10:00:00Z",
-  },
-]
+// Helper to map Prisma Branch to frontend Branch interface
+function mapBranchToDTO(branch: any): Branch {
+  return {
+    id: branch.id,
+    branchName: branch.name,
+    branchCode: branch.branchCode,
+    referenceType: branch.branchType === "main" ? "Hospital" : "Agent", // Map branchType to referenceType
+    referenceId: branch.managerId || "",
+    referenceName: branch.name,
+    address: branch.address,
+    city: branch.city,
+    district: branch.district,
+    contactNumber: branch.phone,
+    email: branch.email || "",
+    status: branch.isActive ? "Active" : "Inactive",
+    createdAt: branch.createdAt.toISOString(),
+    updatedAt: branch.updatedAt.toISOString(),
+  }
+}
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url)
-  const query = searchParams.get("q")
+  try {
+    const { searchParams } = new URL(request.url)
+    const query = searchParams.get("q")
 
-  if (query) {
-    const lowerQuery = query.toLowerCase()
-    const filtered = branches.filter(
-      (b) =>
-        b.branchName.toLowerCase().includes(lowerQuery) ||
-        b.branchCode.toLowerCase().includes(lowerQuery) ||
-        b.city.toLowerCase().includes(lowerQuery) ||
-        b.referenceName.toLowerCase().includes(lowerQuery) ||
-        b.email.toLowerCase().includes(lowerQuery) ||
-        b.contactNumber.includes(query) ||
-        b.district.toLowerCase().includes(lowerQuery),
-    )
-    return NextResponse.json(filtered)
+    let branches
+    if (query) {
+      const lowerQuery = query.toLowerCase()
+      branches = await prisma.branch.findMany({
+        where: {
+          OR: [
+            { name: { contains: lowerQuery, mode: "insensitive" } },
+            { branchCode: { contains: lowerQuery, mode: "insensitive" } },
+            { city: { contains: lowerQuery, mode: "insensitive" } },
+            { email: { contains: lowerQuery, mode: "insensitive" } },
+            { phone: { contains: query } },
+            { district: { contains: lowerQuery, mode: "insensitive" } },
+          ],
+        },
+        orderBy: { createdAt: "desc" },
+      })
+    } else {
+      branches = await prisma.branch.findMany({
+        orderBy: { createdAt: "desc" },
+      })
+    }
+
+    return NextResponse.json(branches.map(mapBranchToDTO))
+  } catch (error) {
+    console.error("GET /api/branches error", error)
+    return NextResponse.json({ error: "Failed to fetch branches" }, { status: 500 })
   }
-
-  return NextResponse.json(branches)
 }
 
 export async function POST(request: Request) {
-  const data: CreateBranchDto = await request.json()
+  try {
+    const data: CreateBranchDto = await request.json()
 
-  const newBranch: Branch = {
-    id: String(branches.length + 1),
-    ...data,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    if (!data.branchName || !data.branchCode) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    }
+
+    const branch = await prisma.branch.create({
+      data: {
+        name: data.branchName,
+        branchCode: data.branchCode,
+        address: data.address,
+        city: data.city,
+        district: data.district,
+        province: data.district, // Using district as province for now
+        phone: data.contactNumber,
+        email: data.email || null,
+        branchType: data.referenceType === "Hospital" ? "main" : "sub-unit",
+        isActive: data.status === "Active",
+      },
+    })
+
+    return NextResponse.json(mapBranchToDTO(branch), { status: 201 })
+  } catch (error) {
+    console.error("POST /api/branches error", error)
+    return NextResponse.json({ error: "Failed to create branch" }, { status: 500 })
   }
-
-  branches.push(newBranch)
-  return NextResponse.json(newBranch, { status: 201 })
 }
