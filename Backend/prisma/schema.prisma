@@ -1,0 +1,128 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  password     String
+  firstName    String?
+  lastName     String?
+  role         UserRole   @default(ADMIN)
+  isActive     Boolean    @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  
+  // Relations
+  branches     Branch[]
+  invoices     Invoice[]
+  auditLogs    AuditLog[]
+  refreshTokens RefreshToken[]
+  
+  @@map("users")
+}
+
+model Branch {
+  id          String      @id @default(uuid())
+  name        String
+  code        String      @unique
+  city        String
+  district    String
+  province    String
+  type        BranchType  @default(HOSPITAL)
+  status      Boolean     @default(true)
+  address     String?
+  phone       String?
+  email       String?
+  description String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  // Relations
+  users       User[]
+  invoices    Invoice[]
+  
+  @@map("branches")
+}
+
+model Invoice {
+  id          String        @id @default(uuid())
+  invoiceNo   String        @unique
+  branchId    String
+  userId      String?
+  amount      Decimal       @db.Decimal(10, 2)
+  status      InvoiceStatus @default(PENDING)
+  dueDate     DateTime?
+  paidAt      DateTime?
+  description String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  // Relations
+  branch      Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  user        User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  @@map("invoices")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  action      String
+  resource    String?
+  resourceId  String?
+  description String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+  
+  // Relations
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  @@map("audit_logs")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("refresh_tokens")
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  DOCTOR
+  HOSPITAL
+  PATIENT
+}
+
+enum BranchType {
+  HOSPITAL
+  CLINIC
+  LABORATORY
+  PHARMACY
+}
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
